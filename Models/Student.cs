@@ -19,8 +19,6 @@ namespace StudentRecordSystem.Models
         [StringLength(30)]
         public string Course { get; set; }
 
-        // NEW: links this record to the account that owns it.
-        // Nullable because Admin-created records (or old data) might not have one.
         public string? UserId { get; set; }
     }
 }
