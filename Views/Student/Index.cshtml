@@ -1,0 +1,183 @@
+@{
+    ViewData["Title"] = "Students";
+}
+
+<h2>Student Records</h2>
+
+<div id="alertBox" class="alert d-none"></div>
+
+@if (User.Identity.IsAuthenticated)
+{
+    <button id="btnShowAdd" class="btn btn-primary mb-3">+ Add New Student</button>
+}
+
+<div id="formPanel" class="card p-3 mb-3 d-none">
+    <input type="hidden" id="studentId" value="0" />
+    <div class="form-group mb-2">
+        <label>Name</label>
+        <input type="text" id="name" class="form-control" />
+        <span class="text-danger" id="err-name"></span>
+    </div>
+    <div class="form-group mb-2">
+        <label>Email</label>
+        <input type="text" id="email" class="form-control" />
+        <span class="text-danger" id="err-email"></span>
+    </div>
+    <div class="form-group mb-2">
+        <label>Course</label>
+        <input type="text" id="course" class="form-control" />
+        <span class="text-danger" id="err-course"></span>
+    </div>
+    <button id="btnSave" class="btn btn-success">Save</button>
+    <button id="btnCancel" class="btn btn-secondary">Cancel</button>
+</div>
+
+<table class="table table-bordered table-striped">
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Course</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody id="studentTableBody"></tbody>
+</table>
+
+@section Scripts {
+<script>
+    const apiUrl = '/api/studentapi';
+    const isAdmin = @Json.Serialize(User.IsInRole("Admin"));
+    const currentUserId = '@ViewBag.CurrentUserId';
+
+    $(document).ready(function () {
+        loadStudents();
+
+        $('#btnShowAdd').click(function () {
+            resetForm();
+            $('#formPanel').removeClass('d-none');
+        });
+        $('#btnCancel').click(function () {
+            $('#formPanel').addClass('d-none');
+        });
+        $('#btnSave').click(saveStudent);
+    });
+
+    function loadStudents() {
+        $.ajax({
+            url: apiUrl,
+            type: 'GET',
+            success: function (students) {
+                const rows = students.map(s => {
+                    const canManage = isAdmin || (s.userId === currentUserId);
+                    const actions = canManage
+                        ? `<button class="btn btn-sm btn-warning" onclick="editStudent(${s.studentId})">Edit</button>
+                           <button class="btn btn-sm btn-danger" onclick="deleteStudent(${s.studentId})">Delete</button>`
+                        : '';
+                    return `<tr>
+                        <td>${s.studentId}</td>
+                        <td>${s.name}</td>
+                        <td>${s.email}</td>
+                        <td>${s.course}</td>
+                        <td>${actions}</td>
+                    </tr>`;
+                }).join('');
+                $('#studentTableBody').html(rows);
+            },
+            error: function (xhr) {
+                handleError(xhr, 'Could not load students.');
+            }
+        });
+    }
+
+    function saveStudent() {
+        clearErrors();
+
+        const id = parseInt($('#studentId').val());
+        const student = {
+            studentId: id,
+            name: $('#name').val(),
+            email: $('#email').val(),
+            course: $('#course').val()
+        };
+        const isEdit = id !== 0;
+
+        $.ajax({
+            url: isEdit ? `${apiUrl}/${id}` : apiUrl,
+            type: isEdit ? 'PUT' : 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify(student),
+            success: function () {
+                $('#formPanel').addClass('d-none');
+                showAlert(isEdit ? 'Student updated.' : 'Student added.', 'success');
+                loadStudents();
+            },
+            error: function (xhr) {
+                if (xhr.status === 400 && xhr.responseJSON && xhr.responseJSON.errors) {
+                    showValidationErrors(xhr.responseJSON.errors);
+                } else {
+                    handleError(xhr, 'Could not save student.');
+                }
+            }
+        });
+    }
+
+    function editStudent(id) {
+        $.get(`${apiUrl}/${id}`, function (s) {
+            $('#studentId').val(s.studentId);
+            $('#name').val(s.name);
+            $('#email').val(s.email);
+            $('#course').val(s.course);
+            $('#formPanel').removeClass('d-none');
+        });
+    }
+
+    function deleteStudent(id) {
+        if (!confirm('Delete this student?')) return;
+
+        $.ajax({
+            url: `${apiUrl}/${id}`,
+            type: 'DELETE',
+            success: function () {
+                showAlert('Student deleted.', 'success');
+                loadStudents();
+            },
+            error: function (xhr) {
+                handleError(xhr, 'Could not delete student.');
+            }
+        });
+    }
+
+    function handleError(xhr, fallbackMessage) {
+        if (xhr.status === 401) showAlert('Please log in.', 'danger');
+        else if (xhr.status === 403) showAlert('You can only manage your own record.', 'danger');
+        else showAlert(fallbackMessage, 'danger');
+    }
+
+    function resetForm() {
+        $('#studentId').val(0);
+        $('#name, #email, #course').val('');
+        clearErrors();
+    }
+
+    function clearErrors() {
+        $('#err-name, #err-email, #err-course').text('');
+    }
+
+    function showValidationErrors(errors) {
+        clearErrors();
+        for (const field in errors) {
+            $(`#err-${field.toLowerCase()}`).text(errors[field][0]);
+        }
+    }
+
+    function showAlert(message, type) {
+        $('#alertBox')
+            .removeClass('d-none alert-success alert-danger')
+            .addClass(`alert-${type}`)
+            .text(message);
+        setTimeout(() => $('#alertBox').addClass('d-none'), 3000);
+    }
+</script>
+}
